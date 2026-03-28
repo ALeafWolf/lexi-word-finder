@@ -5,9 +5,9 @@
 }
 
 :root {
-  --bg: #0f0f13;
-  --surface: #1a1a24;
-  --border: #2a2a3a;
+  --bg: rgba(10, 10, 16, 0.92);
+  --surface: rgba(22, 22, 34, 0.97);
+  --border: rgba(60, 60, 90, 0.6);
   --accent: #7c6af7;
   --accent-dim: #4a3fa0;
   --text: #e8e8f0;
@@ -17,7 +17,7 @@
 
 html, body, #root {
   height: 100%;
-  background-color: var(--bg);
+  background: transparent;
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;

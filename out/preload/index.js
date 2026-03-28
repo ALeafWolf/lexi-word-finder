@@ -1,32 +1,55 @@
 "use strict";
 const electron = require("electron");
+const IPC_CHANNELS = {
+  regionStart: "region:start",
+  regionConfirm: "region:confirm",
+  regionCancel: "region:cancel",
+  regionSelected: "region:selected",
+  scanTrigger: "scan:trigger",
+  scanResult: "scan:result",
+  scanError: "scan:error",
+  settingsGetGridSize: "settings:getGridSize",
+  settingsSetGridSize: "settings:setGridSize",
+  dictionaryList: "dictionary:list",
+  dictionarySet: "dictionary:set",
+  gridSolve: "grid:solve",
+  mainClose: "main:close",
+  mainSetAlwaysOnTop: "main:setAlwaysOnTop",
+  mainGetAlwaysOnTop: "main:getAlwaysOnTop"
+};
 const api = {
   // --- Region selection (used by selector window) ---
-  confirmRegionSelect: (region) => electron.ipcRenderer.send("region:confirm", region),
-  cancelRegionSelect: () => electron.ipcRenderer.send("region:cancel"),
+  confirmRegionSelect: (region) => electron.ipcRenderer.send(IPC_CHANNELS.regionConfirm, region),
+  cancelRegionSelect: () => electron.ipcRenderer.send(IPC_CHANNELS.regionCancel),
   // --- Main window actions ---
-  startRegionSelect: () => electron.ipcRenderer.invoke("region:start"),
+  startRegionSelect: () => electron.ipcRenderer.invoke(IPC_CHANNELS.regionStart),
   onRegionSelected: (callback) => {
     const handler = (_event, region) => callback(region);
-    electron.ipcRenderer.on("region:selected", handler);
-    return () => electron.ipcRenderer.removeListener("region:selected", handler);
+    electron.ipcRenderer.on(IPC_CHANNELS.regionSelected, handler);
+    return () => electron.ipcRenderer.removeListener(IPC_CHANNELS.regionSelected, handler);
   },
   // --- Scan trigger ---
-  triggerScan: () => electron.ipcRenderer.invoke("scan:trigger"),
-  setGridSize: (rows, cols) => electron.ipcRenderer.invoke("settings:setGridSize", rows, cols),
+  triggerScan: () => electron.ipcRenderer.invoke(IPC_CHANNELS.scanTrigger),
+  getGridSize: () => electron.ipcRenderer.invoke(IPC_CHANNELS.settingsGetGridSize),
+  setGridSize: (rows, cols) => electron.ipcRenderer.invoke(IPC_CHANNELS.settingsSetGridSize, rows, cols),
   onScanResult: (callback) => {
     const handler = (_event, result) => callback(result);
-    electron.ipcRenderer.on("scan:result", handler);
-    return () => electron.ipcRenderer.removeListener("scan:result", handler);
+    electron.ipcRenderer.on(IPC_CHANNELS.scanResult, handler);
+    return () => electron.ipcRenderer.removeListener(IPC_CHANNELS.scanResult, handler);
   },
   onScanError: (callback) => {
     const handler = (_event, error) => callback(error);
-    electron.ipcRenderer.on("scan:error", handler);
-    return () => electron.ipcRenderer.removeListener("scan:error", handler);
+    electron.ipcRenderer.on(IPC_CHANNELS.scanError, handler);
+    return () => electron.ipcRenderer.removeListener(IPC_CHANNELS.scanError, handler);
   },
-  // --- Results overlay controls ---
-  closeResultsOverlay: () => electron.ipcRenderer.send("results:close"),
-  setClickThrough: (enabled) => electron.ipcRenderer.send("results:clickthrough", enabled),
-  rescanFromOverlay: () => electron.ipcRenderer.invoke("scan:trigger")
+  // --- Main window toolbar controls ---
+  closeMainWindow: () => electron.ipcRenderer.send(IPC_CHANNELS.mainClose),
+  setMainAlwaysOnTop: (enabled) => electron.ipcRenderer.invoke(IPC_CHANNELS.mainSetAlwaysOnTop, enabled),
+  getMainAlwaysOnTop: () => electron.ipcRenderer.invoke(IPC_CHANNELS.mainGetAlwaysOnTop),
+  // --- Dictionary selection ---
+  listDictionaries: () => electron.ipcRenderer.invoke(IPC_CHANNELS.dictionaryList),
+  setDictionary: (name) => electron.ipcRenderer.invoke(IPC_CHANNELS.dictionarySet, name),
+  // --- Grid editing ---
+  solveGrid: (grid) => electron.ipcRenderer.invoke(IPC_CHANNELS.gridSolve, grid)
 };
 electron.contextBridge.exposeInMainWorld("api", api);

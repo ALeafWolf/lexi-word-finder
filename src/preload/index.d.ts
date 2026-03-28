@@ -1,4 +1,4 @@
-import type { BoundingBox, ScanResult } from '../shared/types'
+import type { BoundingBox, ScanResult, WordResult } from '../shared/types'
 
 export interface LexiApi {
   // Region selection (selector window)
@@ -11,14 +11,22 @@ export interface LexiApi {
 
   // Scan
   triggerScan: () => Promise<void>
+  getGridSize: () => Promise<{ rows: number; cols: number }>
   setGridSize: (rows: number, cols: number) => Promise<void>
   onScanResult: (callback: (result: ScanResult) => void) => () => void
   onScanError: (callback: (error: string) => void) => () => void
 
-  // Results overlay
-  closeResultsOverlay: () => void
-  setClickThrough: (enabled: boolean) => void
-  rescanFromOverlay: () => Promise<void>
+  // Main window toolbar controls
+  closeMainWindow: () => void
+  setMainAlwaysOnTop: (enabled: boolean) => Promise<boolean>
+  getMainAlwaysOnTop: () => Promise<boolean>
+
+  // Dictionary selection
+  listDictionaries: () => Promise<{ items: string[]; current: string }>
+  setDictionary: (name: string) => Promise<void>
+
+  // Grid editing
+  solveGrid: (grid: string[][]) => Promise<{ words: WordResult[]; solveMs: number }>
 }
 
 declare global {

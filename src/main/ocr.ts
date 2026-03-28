@@ -60,7 +60,6 @@ async function preprocessCell(cellBuffer: Buffer): Promise<Buffer> {
     .resize(200, 200, { fit: 'contain', background: { r: 255, g: 255, b: 255 }, kernel: 'lanczos3' })
     .greyscale()
     .normalise()
-    .threshold(128)
     .extend({ top: 20, bottom: 20, left: 20, right: 20, background: { r: 255, g: 255, b: 255 } })
     .png()
     .toBuffer()

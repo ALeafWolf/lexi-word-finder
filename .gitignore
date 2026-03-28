@@ -1,57 +1,56 @@
-.DS_Store
+# Dependencies
+node_modules/
+
+# Build output
+/dist/
+/out/
+
+# Local env
 .env
-.gclient_done
-**/.npmrc
-.tags*
+.env.local
+.env.*.local
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs / editors
 .vs/
 .vscode/
-*.log
-*.pyc
-*.sln
+/.idea/
 *.swp
+.tags*
+.cursor/
+
+# C/C++ / legacy VS (if any native tooling)
+*.sln
 *.VC.db
 *.VC.VC.opendb
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
 *.xcodeproj
-/.idea/
-/dist/
-node_modules/
-SHASUMS256.txt
-**/package-lock.json
-compile_commands.json
-.envrc
 
-# npm package
-/npm/dist
-/npm/path.txt
-/npm/checksums.json
+# Tooling caches
+.eslintcache*
+*.tsbuildinfo
+coverage/
 
+# electron-vite — timestamped temp configs
+electron.vite.config.*.mjs
+
+# npm (optional local auth / registry; do not commit secrets)
+**/.npmrc
 .npmrc
 
-# Generated API definitions
-electron-api.json
-electron.d.ts
-# Spec hash calculation
-spec/.hash
-
-# Eslint Cache
-.eslintcache*
-
-# Generated native addon files
-/spec/fixtures/native-addon/echo/build/
-/spec/fixtures/native-addon/dialog-helper/build/
-
-# If someone runs tsc this is where stuff will end up
+# Misc
+*.pyc
+SHASUMS256.txt
+compile_commands.json
+.envrc
 ts-gen
-
-# Used to accelerate CI builds
-.depshash
-
-# Used to accelerate builds after sync
-patches/mtime-cache.json
-
-spec/fixtures/logo.png
 
 .yarn/install-state.gz

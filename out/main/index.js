@@ -41,7 +41,7 @@ async function initOcrWorker() {
   await workerInstance.setParameters({
     // Uppercase letters only — no digits or punctuation
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    // Single word mode is more robust than SINGLE_CHAR for real-world game tile images
+    // SINGLE_WORD is more robust than SINGLE_CHAR for real-world game tile images
     tessedit_pageseg_mode: tesseract_js.PSM.SINGLE_WORD
   });
   console.log("[ocr] Tesseract worker ready");
@@ -52,42 +52,8 @@ async function terminateOcrWorker() {
     workerInstance = null;
   }
 }
-let _cellCallIndex = 0;
 async function preprocessCell(cellBuffer) {
-  const isFirstCell = _cellCallIndex === 0;
-  _cellCallIndex++;
-  const rawMeta = await sharp(cellBuffer).metadata();
-  fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-entry", message: "Raw cell size before preprocessing", data: { w: rawMeta.width, h: rawMeta.height }, runId: "run2", hypothesisId: "A-E", timestamp: Date.now() }) }).catch(() => {
-  });
-  if (isFirstCell) {
-    const rawPath = path.join(electron.app.getPath("temp"), "lexi-cell00-RAW.png");
-    fs.writeFileSync(rawPath, cellBuffer);
-    console.log(`[ocr-debug] Raw cell[0][0] saved to ${rawPath}`);
-  }
-  const beforeThreshold = await sharp(cellBuffer).resize(200, 200, { fit: "contain", background: { r: 255, g: 255, b: 255 }, kernel: "lanczos3" }).greyscale().normalise().png().toBuffer();
-  if (isFirstCell) {
-    const { data: pixData } = await sharp(beforeThreshold).raw().toBuffer({ resolveWithObject: true });
-    const min = Math.min(...Array.from(pixData));
-    const max = Math.max(...Array.from(pixData));
-    const avg = Array.from(pixData).reduce((s, v) => s + v, 0) / pixData.length;
-    fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-greyscale-stats", message: "Greyscale cell[0][0] pixel stats (before threshold)", data: { min, max, avg: Math.round(avg) }, runId: "run2", hypothesisId: "D", timestamp: Date.now() }) }).catch(() => {
-    });
-    const prePath = path.join(electron.app.getPath("temp"), "lexi-cell00-GREY.png");
-    fs.writeFileSync(prePath, beforeThreshold);
-    console.log(`[ocr-debug] Greyscale cell[0][0] saved to ${prePath}`);
-  }
-  const result = await sharp(beforeThreshold).threshold(128).extend({ top: 20, bottom: 20, left: 20, right: 20, background: { r: 255, g: 255, b: 255 } }).png().toBuffer();
-  if (isFirstCell) {
-    const postPath = path.join(electron.app.getPath("temp"), "lexi-cell00-THRESH.png");
-    fs.writeFileSync(postPath, result);
-    console.log(`[ocr-debug] Thresholded cell[0][0] saved to ${postPath}`);
-    const { data: threshData } = await sharp(result).raw().toBuffer({ resolveWithObject: true });
-    const whitePixels = Array.from(threshData).filter((v) => v === 255).length;
-    const blackPixels = Array.from(threshData).filter((v) => v === 0).length;
-    fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-threshold-stats", message: "After threshold pixel stats for cell[0][0]", data: { white: whitePixels, black: blackPixels, pctWhite: Math.round(whitePixels / (whitePixels + blackPixels) * 100) }, runId: "run2", hypothesisId: "D", timestamp: Date.now() }) }).catch(() => {
-    });
-  }
-  return result;
+  return sharp(cellBuffer).resize(200, 200, { fit: "contain", background: { r: 255, g: 255, b: 255 }, kernel: "lanczos3" }).greyscale().normalise().extend({ top: 20, bottom: 20, left: 20, right: 20, background: { r: 255, g: 255, b: 255 } }).png().toBuffer();
 }
 async function splitIntoCells(pngBuffer, rows, cols, borderTrimPct = 0.08) {
   const meta = await sharp(pngBuffer).metadata();
@@ -129,7 +95,6 @@ async function recognizeGrid(pngBuffer, rows = 4, cols = 4) {
   if (!workerInstance) {
     throw new Error("OCR worker not initialized. Call initOcrWorker() at startup.");
   }
-  _cellCallIndex = 0;
   const cells = await splitIntoCells(pngBuffer, rows, cols);
   const rawCells = [];
   const grid = [];
@@ -143,10 +108,6 @@ async function recognizeGrid(pngBuffer, rows = 4, cols = 4) {
       } = await workerInstance.recognize(preprocessed);
       const raw = text.trim();
       const normalized = normalizeChar(raw);
-      if (r === 0 && c === 0) {
-        fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:recognizeGrid-cell[0][0]", message: "Raw tesseract output for cell[0][0]", data: { rawText: JSON.stringify(text), rawLen: text.length, cleaned: raw, normalized }, runId: "run2", hypothesisId: "B-C-D", timestamp: Date.now() }) }).catch(() => {
-        });
-      }
       rawRow.push(raw);
       gridRow.push(normalized);
     }
@@ -232,7 +193,7 @@ class Trie {
     return trie;
   }
 }
-let cachedTrie = null;
+const trieCache = /* @__PURE__ */ new Map();
 function getResourcesPath() {
   if (typeof process !== "undefined" && process.resourcesPath) {
     try {
@@ -243,20 +204,30 @@ function getResourcesPath() {
   }
   return path.join(process.cwd(), "resources");
 }
-function getDictionary() {
-  if (cachedTrie) return cachedTrie;
-  const wordlistPath = path.join(getResourcesPath(), "wordlist.txt");
+function listDictionaries() {
+  try {
+    const dir = getResourcesPath();
+    return fs.readdirSync(dir).filter((f) => f.endsWith(".txt")).map((f) => f.slice(0, -4)).sort();
+  } catch {
+    return ["wordlist"];
+  }
+}
+function getDictionary(name = "wordlist") {
+  const cached = trieCache.get(name);
+  if (cached) return cached;
+  const filePath = path.join(getResourcesPath(), `${name}.txt`);
   let content;
   try {
-    content = fs.readFileSync(wordlistPath, "utf-8");
+    content = fs.readFileSync(filePath, "utf-8");
   } catch {
-    console.warn(`[dictionary] Could not load wordlist from ${wordlistPath}, using built-in fallback`);
+    console.warn(`[dictionary] Could not load "${name}.txt", using built-in fallback`);
     content = FALLBACK_WORDS.join("\n");
   }
-  const words = content.split(/\r?\n/).map((w) => w.trim().toUpperCase()).filter((w) => w.length >= 3 && /^[A-Z]+$/.test(w));
-  console.log(`[dictionary] Loaded ${words.length} words into Trie`);
-  cachedTrie = Trie.fromWords(words);
-  return cachedTrie;
+  const words = content.split(/\r?\n/).flatMap((line) => line.trim().split(/\s+/)).map((w) => w.toUpperCase()).filter((w) => w.length >= 3 && /^[A-Z]+$/.test(w));
+  console.log(`[dictionary] Loaded ${words.length} words from "${name}.txt" into Trie`);
+  const trie = Trie.fromWords(words);
+  trieCache.set(name, trie);
+  return trie;
 }
 const FALLBACK_WORDS = [
   "the",
@@ -392,7 +363,7 @@ function solve(grid, trie, minLength = 3) {
     return a.word.localeCompare(b.word);
   });
 }
-async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = false) {
+async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = false, dictionary = "wordlist") {
   const total = Date.now();
   const t0 = Date.now();
   const pngBuffer = await captureRegion(region);
@@ -405,7 +376,7 @@ async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = fa
   const { grid } = await recognizeGrid(pngBuffer, gridRows2, gridCols2);
   const ocrMs = Date.now() - t1;
   const t2 = Date.now();
-  const trie = getDictionary();
+  const trie = getDictionary(dictionary);
   const words = solve(grid, trie);
   const solveMs = Date.now() - t2;
   const elapsedMs = Date.now() - total;
@@ -417,7 +388,8 @@ async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = fa
 const DEFAULT_SETTINGS = {
   lastRegion: null,
   gridRows: 4,
-  gridCols: 4
+  gridCols: 4,
+  dictionary: "wordlist"
 };
 function getSettingsPath() {
   const dir = electron.app.getPath("userData");
@@ -496,20 +468,106 @@ function createTray(onScan, onSelectRegion, onShowMain) {
   tray.on("click", onShowMain);
   return tray;
 }
+const IPC_CHANNELS = {
+  regionStart: "region:start",
+  regionConfirm: "region:confirm",
+  regionCancel: "region:cancel",
+  regionSelected: "region:selected",
+  scanTrigger: "scan:trigger",
+  scanResult: "scan:result",
+  scanError: "scan:error",
+  settingsGetGridSize: "settings:getGridSize",
+  settingsSetGridSize: "settings:setGridSize",
+  dictionaryList: "dictionary:list",
+  dictionarySet: "dictionary:set",
+  gridSolve: "grid:solve",
+  mainClose: "main:close",
+  mainSetAlwaysOnTop: "main:setAlwaysOnTop",
+  mainGetAlwaysOnTop: "main:getAlwaysOnTop"
+};
+const MIN_GRID = 2;
+const MAX_GRID = 15;
+const MAX_CELL_TEXT = 2;
+function isInteger(n) {
+  return typeof n === "number" && Number.isInteger(n);
+}
+function parseGridSize(rows, cols) {
+  if (!isInteger(rows) || !isInteger(cols)) return null;
+  if (rows < MIN_GRID || rows > MAX_GRID || cols < MIN_GRID || cols > MAX_GRID) return null;
+  return { rows, cols };
+}
+function parseBoundingBox(payload) {
+  if (typeof payload !== "object" || payload === null) return null;
+  const maybe = payload;
+  if (!isInteger(maybe.x) || !isInteger(maybe.y) || !isInteger(maybe.width) || !isInteger(maybe.height)) {
+    return null;
+  }
+  if (maybe.width <= 0 || maybe.height <= 0) return null;
+  return { x: maybe.x, y: maybe.y, width: maybe.width, height: maybe.height };
+}
+function parseBoolean(value) {
+  return typeof value === "boolean" ? value : null;
+}
+function parseEditableGrid(payload) {
+  if (!Array.isArray(payload) || payload.length < MIN_GRID || payload.length > MAX_GRID) return null;
+  const rows = payload;
+  const firstRow = rows[0];
+  if (!Array.isArray(firstRow) || firstRow.length < MIN_GRID || firstRow.length > MAX_GRID) return null;
+  const cols = firstRow.length;
+  const normalized = [];
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length !== cols) return null;
+    const outRow = [];
+    for (const cell of row) {
+      if (typeof cell !== "string") return null;
+      const clean = cell.trim().toUpperCase();
+      if (clean.length === 0 || clean.length > MAX_CELL_TEXT) return null;
+      outRow.push(clean);
+    }
+    normalized.push(outRow);
+  }
+  return normalized;
+}
+function registerWindowControlIpc({ getMainWindow }) {
+  electron.ipcMain.on(IPC_CHANNELS.mainClose, () => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.close();
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.mainSetAlwaysOnTop, (_event, payload) => {
+    const enabled = parseBoolean(payload);
+    if (enabled === null) {
+      throw new Error("Invalid payload for main:setAlwaysOnTop");
+    }
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(enabled);
+    }
+    return enabled;
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.mainGetAlwaysOnTop, () => {
+    const win = getMainWindow();
+    return win && !win.isDestroyed() ? win.isAlwaysOnTop() : false;
+  });
+}
 let mainWindow = null;
 let selectorWindow = null;
-let resultsWindow = null;
 let savedRegion = null;
 let gridRows = 4;
 let gridCols = 4;
+let currentDictionary = "wordlist";
 function createMainWindow() {
   const win = new electron.BrowserWindow({
     width: 900,
     height: 670,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false
     }
   });
@@ -541,6 +599,8 @@ function createSelectorWindow() {
     fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false
     }
   });
@@ -552,63 +612,42 @@ function createSelectorWindow() {
   }
   return win;
 }
-function createResultsWindow() {
-  const win = new electron.BrowserWindow({
-    width: 264,
-    height: 600,
-    x: 20,
-    y: 60,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: true,
-    webPreferences: {
-      preload: path.join(__dirname, "../preload/index.js"),
-      sandbox: false
-    }
-  });
-  if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
-    win.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}/results.html`);
-  } else {
-    win.loadFile(path.join(__dirname, "../renderer/results.html"));
-  }
-  win.on("closed", () => {
-    resultsWindow = null;
-  });
-  return win;
-}
 function registerIpc() {
-  electron.ipcMain.handle("region:start", () => {
+  electron.ipcMain.handle(IPC_CHANNELS.regionStart, () => {
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.focus();
       return;
     }
     selectorWindow = createSelectorWindow();
   });
-  electron.ipcMain.on("region:confirm", (_event, region) => {
+  electron.ipcMain.on(IPC_CHANNELS.regionConfirm, (_event, payload) => {
+    const region = parseBoundingBox(payload);
+    if (!region) {
+      console.warn("[main] Ignoring invalid region payload.");
+      return;
+    }
     savedRegion = region;
-    saveSettings({ lastRegion: region, gridRows, gridCols });
+    saveSettings({ lastRegion: region, gridRows, gridCols, dictionary: currentDictionary });
     console.log("[main] Region selected:", region);
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.close();
       selectorWindow = null;
     }
-    mainWindow?.webContents.send("region:selected", region);
+    mainWindow?.webContents.send(IPC_CHANNELS.regionSelected, region);
   });
-  electron.ipcMain.on("region:cancel", () => {
+  electron.ipcMain.on(IPC_CHANNELS.regionCancel, () => {
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.close();
       selectorWindow = null;
     }
   });
-  electron.ipcMain.handle("scan:trigger", async () => {
+  electron.ipcMain.handle(IPC_CHANNELS.scanTrigger, async () => {
     if (!savedRegion) {
       broadcastScanError("No region selected. Please select a region first.");
       return;
     }
     try {
-      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true);
+      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary);
       broadcastScanResult(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -616,39 +655,40 @@ function registerIpc() {
       broadcastScanError(`Scan failed: ${msg}`);
     }
   });
-  electron.ipcMain.handle("settings:setGridSize", (_event, rows, cols) => {
-    gridRows = rows;
-    gridCols = cols;
-    saveSettings({ lastRegion: savedRegion, gridRows, gridCols });
-  });
-  electron.ipcMain.on("results:close", () => {
-    if (resultsWindow && !resultsWindow.isDestroyed()) {
-      resultsWindow.close();
-      resultsWindow = null;
+  electron.ipcMain.handle(IPC_CHANNELS.settingsGetGridSize, () => ({ rows: gridRows, cols: gridCols }));
+  electron.ipcMain.handle(IPC_CHANNELS.settingsSetGridSize, (_event, rows, cols) => {
+    const parsed = parseGridSize(rows, cols);
+    if (!parsed) {
+      throw new Error("Invalid grid size payload");
     }
+    gridRows = parsed.rows;
+    gridCols = parsed.cols;
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
   });
-  electron.ipcMain.on("results:clickthrough", (_event, enabled) => {
-    if (resultsWindow && !resultsWindow.isDestroyed()) {
-      resultsWindow.setIgnoreMouseEvents(enabled, { forward: true });
-    }
+  electron.ipcMain.handle(IPC_CHANNELS.dictionaryList, () => {
+    return { items: listDictionaries(), current: currentDictionary };
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.dictionarySet, (_event, name) => {
+    if (typeof name !== "string") throw new Error("Invalid dictionary payload");
+    const items = listDictionaries();
+    if (!items.includes(name)) throw new Error("Unknown dictionary");
+    currentDictionary = name;
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.gridSolve, (_event, payload) => {
+    const grid = parseEditableGrid(payload);
+    if (!grid) throw new Error("Invalid grid payload");
+    const trie = getDictionary(currentDictionary);
+    const t0 = Date.now();
+    const words = solve(grid, trie);
+    return { words, solveMs: Date.now() - t0 };
   });
 }
 function broadcastScanResult(result) {
-  mainWindow?.webContents.send("scan:result", result);
-  if (!resultsWindow || resultsWindow.isDestroyed()) {
-    resultsWindow = createResultsWindow();
-    resultsWindow.webContents.once("did-finish-load", () => {
-      resultsWindow?.webContents.send("scan:result", result);
-    });
-  } else {
-    resultsWindow.webContents.send("scan:result", result);
-    resultsWindow.show();
-    resultsWindow.focus();
-  }
+  mainWindow?.webContents.send(IPC_CHANNELS.scanResult, result);
 }
 function broadcastScanError(msg) {
-  mainWindow?.webContents.send("scan:error", msg);
-  resultsWindow?.webContents.send("scan:error", msg);
+  mainWindow?.webContents.send(IPC_CHANNELS.scanError, msg);
 }
 electron.app.whenReady().then(() => {
   utils.electronApp.setAppUserModelId("com.lexi-word-finder");
@@ -656,21 +696,23 @@ electron.app.whenReady().then(() => {
   savedRegion = settings.lastRegion;
   gridRows = settings.gridRows;
   gridCols = settings.gridCols;
+  currentDictionary = settings.dictionary;
   electron.app.on("browser-window-created", (_, window) => {
     utils.optimizer.watchWindowShortcuts(window);
   });
   registerIpc();
+  registerWindowControlIpc({ getMainWindow: () => mainWindow });
   mainWindow = createMainWindow();
   if (savedRegion) {
     mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow?.webContents.send("region:selected", savedRegion);
+      mainWindow?.webContents.send(IPC_CHANNELS.regionSelected, savedRegion);
     });
   }
   createTray(
     // onScan
     () => {
       if (!savedRegion) return;
-      scanAndSolve(savedRegion, gridRows, gridCols, false).then(broadcastScanResult).catch((err) => broadcastScanError(err instanceof Error ? err.message : String(err)));
+      scanAndSolve(savedRegion, gridRows, gridCols, false, currentDictionary).then(broadcastScanResult).catch((err) => broadcastScanError(err instanceof Error ? err.message : String(err)));
     },
     // onSelectRegion
     () => {
@@ -694,7 +736,7 @@ electron.app.whenReady().then(() => {
       broadcastScanError("No region selected. Please select a region first.");
       return;
     }
-    scanAndSolve(savedRegion, gridRows, gridCols, true).then(broadcastScanResult).catch((err) => {
+    scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary).then(broadcastScanResult).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastScanError(`Scan failed: ${msg}`);
     });
