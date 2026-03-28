@@ -1,4 +1,4 @@
-import type { BoundingBox, ScanResult } from '../shared/types'
+import type { BoundingBox, ScanResult, WordResult } from '../shared/types'
 
 export interface LexiApi {
   // Region selection (selector window)
@@ -23,6 +23,9 @@ export interface LexiApi {
   // Dictionary selection
   listDictionaries: () => Promise<{ items: string[]; current: string }>
   setDictionary: (name: string) => Promise<void>
+
+  // Grid editing
+  solveGrid: (grid: string[][]) => Promise<{ words: WordResult[]; solveMs: number }>
 }
 
 declare global {

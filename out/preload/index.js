@@ -30,6 +30,8 @@ const api = {
   rescanFromOverlay: () => electron.ipcRenderer.invoke("scan:trigger"),
   // --- Dictionary selection ---
   listDictionaries: () => electron.ipcRenderer.invoke("dictionary:list"),
-  setDictionary: (name) => electron.ipcRenderer.invoke("dictionary:set", name)
+  setDictionary: (name) => electron.ipcRenderer.invoke("dictionary:set", name),
+  // --- Grid editing ---
+  solveGrid: (grid) => electron.ipcRenderer.invoke("grid:solve", grid)
 };
 electron.contextBridge.exposeInMainWorld("api", api);

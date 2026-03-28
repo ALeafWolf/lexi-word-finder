@@ -5,6 +5,10 @@ import './App.css'
 function App(): React.JSX.Element {
   const [region, setRegion] = useState<BoundingBox | null>(null)
   const [result, setResult] = useState<ScanResult | null>(null)
+  const [editableGrid, setEditableGrid] = useState<string[][]>([])
+  const [editedCells, setEditedCells] = useState<Set<string>>(new Set())
+  const [editingCell, setEditingCell] = useState<string | null>(null)
+  const [draftValue, setDraftValue] = useState('')
   const [status, setStatus] = useState<'idle' | 'selecting' | 'scanning' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [gridSize, setGridSizeState] = useState<4 | 5>(4)
@@ -25,6 +29,9 @@ function App(): React.JSX.Element {
     })
     const unsubResult = window.api.onScanResult((r) => {
       setResult(r)
+      setEditableGrid(r.grid.map((row) => [...row]))
+      setEditedCells(new Set())
+      setEditingCell(null)
       setStatus('idle')
       setErrorMsg(null)
     })
@@ -62,6 +69,26 @@ function App(): React.JSX.Element {
     setSelectedDict(name)
     await window.api.setDictionary(name)
   }, [])
+
+  const startCellEdit = useCallback((r: number, c: number, letter: string) => {
+    setEditingCell(`${r},${c}`)
+    setDraftValue(letter === '?' ? '' : letter)
+  }, [])
+
+  const commitCellEdit = useCallback(
+    async (r: number, c: number) => {
+      const trimmed = draftValue.trim()
+      setEditingCell(null)
+      if (trimmed.length === 0) return
+      const newGrid = editableGrid.map((row) => [...row])
+      newGrid[r][c] = trimmed
+      setEditableGrid(newGrid)
+      setEditedCells((prev) => new Set(prev).add(`${r},${c}`))
+      const { words } = await window.api.solveGrid(newGrid)
+      setResult((prev) => (prev ? { ...prev, words } : prev))
+    },
+    [draftValue, editableGrid]
+  )
 
   return (
     <div className="app">
@@ -147,14 +174,55 @@ function App(): React.JSX.Element {
             </div>
             <div
               className="grid-preview"
-              style={{ gridTemplateColumns: `repeat(${result.grid[0]?.length ?? 4}, 1fr)` }}
+              style={{ gridTemplateColumns: `repeat(${editableGrid[0]?.length ?? result.grid[0]?.length ?? 4}, 1fr)` }}
             >
-              {result.grid.map((row, r) =>
-                row.map((letter, c) => (
-                  <div key={`${r},${c}`} className="preview-cell">
-                    {letter}
-                  </div>
-                ))
+              {editableGrid.map((row, r) =>
+                row.map((letter, c) => {
+                  const key = `${r},${c}`
+                  const isEditing = editingCell === key
+                  const isEdited = editedCells.has(key)
+                  const hasOcrError = letter === '?'
+                  const classes = [
+                    'preview-cell',
+                    isEdited ? 'edited' : '',
+                    isEditing ? 'editing' : '',
+                    hasOcrError ? 'ocr-error' : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                  return (
+                    <div
+                      key={key}
+                      className={classes}
+                      title={hasOcrError ? 'OCR could not read this cell — click to fix' : 'Click to edit'}
+                      onClick={() => !isEditing && startCellEdit(r, c, letter)}
+                    >
+                      {isEditing ? (
+                        <input
+                          className="preview-cell-input"
+                          value={draftValue}
+                          autoFocus
+                          maxLength={2}
+                          onChange={(e) => setDraftValue(e.target.value.toUpperCase())}
+                          onFocus={(e) => e.target.select()}
+                          onBlur={() => commitCellEdit(r, c)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === 'Tab') {
+                              e.preventDefault()
+                              commitCellEdit(r, c)
+                            } else if (e.key === 'Escape') {
+                              setEditingCell(null)
+                            }
+                          }}
+                        />
+                      ) : hasOcrError ? (
+                        <span className="preview-unknown">?</span>
+                      ) : (
+                        letter
+                      )}
+                    </div>
+                  )
+                })
               )}
             </div>
             <div className="top-words">

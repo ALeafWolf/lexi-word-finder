@@ -4,7 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initOcrWorker, terminateOcrWorker } from './ocr'
 import { scanAndSolve } from './pipeline'
 import { loadSettings, saveSettings } from './settings'
-import { listDictionaries } from './solver/dictionary'
+import { listDictionaries, getDictionary } from './solver/dictionary'
+import { solve } from './solver/solver'
 import { createTray } from './tray'
 import type { Tray } from 'electron'
 
@@ -181,6 +182,14 @@ function registerIpc(): void {
   ipcMain.handle('dictionary:set', (_event, name: string) => {
     currentDictionary = name
     saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary })
+  })
+
+  // Re-solve with a user-edited grid (no capture or OCR)
+  ipcMain.handle('grid:solve', (_event, grid: string[][]) => {
+    const trie = getDictionary(currentDictionary)
+    const t0 = Date.now()
+    const words = solve(grid, trie)
+    return { words, solveMs: Date.now() - t0 }
   })
 
   // Results overlay controls

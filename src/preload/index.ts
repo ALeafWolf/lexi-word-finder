@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BoundingBox, ScanResult } from '../shared/types'
+import type { BoundingBox, ScanResult, WordResult } from '../shared/types'
 
 const api = {
   // --- Region selection (used by selector window) ---
@@ -42,7 +42,11 @@ const api = {
   // --- Dictionary selection ---
   listDictionaries: (): Promise<{ items: string[]; current: string }> =>
     ipcRenderer.invoke('dictionary:list'),
-  setDictionary: (name: string): Promise<void> => ipcRenderer.invoke('dictionary:set', name)
+  setDictionary: (name: string): Promise<void> => ipcRenderer.invoke('dictionary:set', name),
+
+  // --- Grid editing ---
+  solveGrid: (grid: string[][]): Promise<{ words: WordResult[]; solveMs: number }> =>
+    ipcRenderer.invoke('grid:solve', grid)
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -230,6 +230,48 @@
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.preview-cell:hover:not(.editing) {
+  border-color: rgba(124, 106, 247, 0.4);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.preview-cell.edited {
+  border-color: rgba(124, 106, 247, 0.6);
+  background: rgba(124, 106, 247, 0.1);
+}
+
+.preview-cell.editing {
+  border-color: var(--accent);
+  background: rgba(124, 106, 247, 0.18);
+  padding: 0;
+}
+
+.preview-cell.ocr-error {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.preview-cell-input {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  font-family: inherit;
+  cursor: text;
+}
+
+.preview-unknown {
+  color: var(--red);
+  font-size: 0.75rem;
 }
 
 .top-words {

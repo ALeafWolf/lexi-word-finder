@@ -601,6 +601,12 @@ function registerIpc() {
     currentDictionary = name;
     saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
   });
+  electron.ipcMain.handle("grid:solve", (_event, grid) => {
+    const trie = getDictionary(currentDictionary);
+    const t0 = Date.now();
+    const words = solve(grid, trie);
+    return { words, solveMs: Date.now() - t0 };
+  });
   electron.ipcMain.on("results:close", () => {
     if (resultsWindow && !resultsWindow.isDestroyed()) {
       resultsWindow.close();

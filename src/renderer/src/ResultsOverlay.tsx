@@ -4,6 +4,8 @@ import './ResultsOverlay.css'
 
 export default function ResultsOverlay(): React.JSX.Element {
   const [result, setResult] = useState<ScanResult | null>(null)
+  const [editableGrid, setEditableGrid] = useState<string[][]>([])
+  const [editedCells, setEditedCells] = useState<Set<string>>(new Set())
   const [hoveredWord, setHoveredWord] = useState<WordResult | null>(null)
   const [clickThrough, setClickThroughState] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -11,6 +13,8 @@ export default function ResultsOverlay(): React.JSX.Element {
   useEffect(() => {
     const unsub = window.api.onScanResult((r) => {
       setResult(r)
+      setEditableGrid(r.grid.map((row) => [...row]))
+      setEditedCells(new Set())
       setIsScanning(false)
     })
     const unsubErr = window.api.onScanError(() => {
@@ -21,6 +25,18 @@ export default function ResultsOverlay(): React.JSX.Element {
       unsubErr()
     }
   }, [])
+
+  const handleCellEdit = useCallback(
+    async (r: number, c: number, value: string) => {
+      const newGrid = editableGrid.map((row) => [...row])
+      newGrid[r][c] = value
+      setEditableGrid(newGrid)
+      setEditedCells((prev) => new Set(prev).add(`${r},${c}`))
+      const { words } = await window.api.solveGrid(newGrid)
+      setResult((prev) => (prev ? { ...prev, words } : prev))
+    },
+    [editableGrid]
+  )
 
   const handleClose = useCallback(() => {
     window.api.closeResultsOverlay()
@@ -72,7 +88,12 @@ export default function ResultsOverlay(): React.JSX.Element {
         {result ? (
           <>
             {/* Grid display */}
-            <GridDisplay grid={result.grid} highlightedCells={highlightedCells} />
+            <GridDisplay
+              editableGrid={editableGrid}
+              editedCells={editedCells}
+              highlightedCells={highlightedCells}
+              onCellEdit={handleCellEdit}
+            />
 
             {/* Stats */}
             <div className="stats">
@@ -97,32 +118,91 @@ export default function ResultsOverlay(): React.JSX.Element {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 interface GridDisplayProps {
-  grid: string[][]
+  editableGrid: string[][]
+  editedCells: Set<string>
   highlightedCells: Set<string> | null
+  onCellEdit: (r: number, c: number, value: string) => void
 }
 
-function GridDisplay({ grid, highlightedCells }: GridDisplayProps): React.JSX.Element {
-  const cols = grid[0]?.length ?? 4
+function GridDisplay({
+  editableGrid,
+  editedCells,
+  highlightedCells,
+  onCellEdit
+}: GridDisplayProps): React.JSX.Element {
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [draftValue, setDraftValue] = useState('')
+  const cols = editableGrid[0]?.length ?? 4
+
+  const startEdit = (r: number, c: number, letter: string) => {
+    setEditingKey(`${r},${c}`)
+    setDraftValue(letter === '?' ? '' : letter)
+  }
+
+  const commitEdit = (r: number, c: number) => {
+    const trimmed = draftValue.trim()
+    if (trimmed.length > 0) {
+      onCellEdit(r, c, trimmed)
+    }
+    setEditingKey(null)
+  }
+
   return (
     <div
       className="grid-display"
       style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
     >
-      {grid.map((row, r) =>
+      {editableGrid.map((row, r) =>
         row.map((letter, c) => {
           const key = `${r},${c}`
-          const isHighlighted = highlightedCells?.has(key) ?? false
+          const isEditing = editingKey === key
+          const isHighlighted = !isEditing && (highlightedCells?.has(key) ?? false)
           const pathArray = highlightedCells ? Array.from(highlightedCells) : []
           const pathIndex = isHighlighted ? pathArray.indexOf(key) : -1
           const hasOcrError = letter === '?'
+          const isEdited = editedCells.has(key)
+
+          const classes = [
+            'cell',
+            isHighlighted ? 'highlighted' : '',
+            hasOcrError ? 'ocr-error' : '',
+            isEdited ? 'edited' : '',
+            isEditing ? 'editing' : ''
+          ]
+            .filter(Boolean)
+            .join(' ')
+
           return (
             <div
               key={key}
-              className={`cell${isHighlighted ? ' highlighted' : ''}${hasOcrError ? ' ocr-error' : ''}`}
+              className={classes}
               data-index={isHighlighted ? pathIndex + 1 : undefined}
-              title={hasOcrError ? 'OCR could not read this cell' : undefined}
+              title={hasOcrError ? 'OCR could not read this cell — click to fix' : 'Click to edit'}
+              onClick={() => !isEditing && startEdit(r, c, letter)}
             >
-              {hasOcrError ? <span className="unknown">?</span> : letter}
+              {isEditing ? (
+                <input
+                  className="cell-input"
+                  value={draftValue}
+                  autoFocus
+                  maxLength={2}
+                  onChange={(e) => setDraftValue(e.target.value.toUpperCase())}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => commitEdit(r, c)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault()
+                      commitEdit(r, c)
+                    } else if (e.key === 'Escape') {
+                      setEditingKey(null)
+                    }
+                  }}
+                />
+              ) : hasOcrError ? (
+                <span className="unknown">?</span>
+              ) : (
+                letter
+              )}
             </div>
           )
         })

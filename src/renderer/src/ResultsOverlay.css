@@ -145,6 +145,40 @@
   background: rgba(248, 113, 113, 0.08);
 }
 
+.cell.edited {
+  border-color: rgba(124, 106, 247, 0.6);
+  background: rgba(124, 106, 247, 0.1);
+}
+
+.cell.editing {
+  border-color: var(--accent);
+  background: rgba(124, 106, 247, 0.18);
+  padding: 0;
+}
+
+.cell-input {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  font-family: inherit;
+  cursor: text;
+}
+
+.cell:not(.editing) {
+  cursor: pointer;
+}
+
+.cell:not(.editing):not(.highlighted):hover {
+  border-color: rgba(124, 106, 247, 0.4);
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .unknown {
   color: var(--red);
   font-size: 0.75rem;
