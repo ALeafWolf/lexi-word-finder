@@ -468,9 +468,89 @@ function createTray(onScan, onSelectRegion, onShowMain) {
   tray.on("click", onShowMain);
   return tray;
 }
+const IPC_CHANNELS = {
+  regionStart: "region:start",
+  regionConfirm: "region:confirm",
+  regionCancel: "region:cancel",
+  regionSelected: "region:selected",
+  scanTrigger: "scan:trigger",
+  scanResult: "scan:result",
+  scanError: "scan:error",
+  settingsGetGridSize: "settings:getGridSize",
+  settingsSetGridSize: "settings:setGridSize",
+  dictionaryList: "dictionary:list",
+  dictionarySet: "dictionary:set",
+  gridSolve: "grid:solve",
+  mainClose: "main:close",
+  mainSetAlwaysOnTop: "main:setAlwaysOnTop",
+  mainGetAlwaysOnTop: "main:getAlwaysOnTop"
+};
+const MIN_GRID = 2;
+const MAX_GRID = 15;
+const MAX_CELL_TEXT = 2;
+function isInteger(n) {
+  return typeof n === "number" && Number.isInteger(n);
+}
+function parseGridSize(rows, cols) {
+  if (!isInteger(rows) || !isInteger(cols)) return null;
+  if (rows < MIN_GRID || rows > MAX_GRID || cols < MIN_GRID || cols > MAX_GRID) return null;
+  return { rows, cols };
+}
+function parseBoundingBox(payload) {
+  if (typeof payload !== "object" || payload === null) return null;
+  const maybe = payload;
+  if (!isInteger(maybe.x) || !isInteger(maybe.y) || !isInteger(maybe.width) || !isInteger(maybe.height)) {
+    return null;
+  }
+  if (maybe.width <= 0 || maybe.height <= 0) return null;
+  return { x: maybe.x, y: maybe.y, width: maybe.width, height: maybe.height };
+}
+function parseBoolean(value) {
+  return typeof value === "boolean" ? value : null;
+}
+function parseEditableGrid(payload) {
+  if (!Array.isArray(payload) || payload.length < MIN_GRID || payload.length > MAX_GRID) return null;
+  const rows = payload;
+  const firstRow = rows[0];
+  if (!Array.isArray(firstRow) || firstRow.length < MIN_GRID || firstRow.length > MAX_GRID) return null;
+  const cols = firstRow.length;
+  const normalized = [];
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length !== cols) return null;
+    const outRow = [];
+    for (const cell of row) {
+      if (typeof cell !== "string") return null;
+      const clean = cell.trim().toUpperCase();
+      if (clean.length === 0 || clean.length > MAX_CELL_TEXT) return null;
+      outRow.push(clean);
+    }
+    normalized.push(outRow);
+  }
+  return normalized;
+}
+function registerWindowControlIpc({ getMainWindow }) {
+  electron.ipcMain.on(IPC_CHANNELS.mainClose, () => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.close();
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.mainSetAlwaysOnTop, (_event, payload) => {
+    const enabled = parseBoolean(payload);
+    if (enabled === null) {
+      throw new Error("Invalid payload for main:setAlwaysOnTop");
+    }
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(enabled);
+    }
+    return enabled;
+  });
+  electron.ipcMain.handle(IPC_CHANNELS.mainGetAlwaysOnTop, () => {
+    const win = getMainWindow();
+    return win && !win.isDestroyed() ? win.isAlwaysOnTop() : false;
+  });
+}
 let mainWindow = null;
 let selectorWindow = null;
-let resultsWindow = null;
 let savedRegion = null;
 let gridRows = 4;
 let gridCols = 4;
@@ -479,10 +559,15 @@ function createMainWindow() {
   const win = new electron.BrowserWindow({
     width: 900,
     height: 670,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false
     }
   });
@@ -514,6 +599,8 @@ function createSelectorWindow() {
     fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
       sandbox: false
     }
   });
@@ -525,45 +612,20 @@ function createSelectorWindow() {
   }
   return win;
 }
-function colsToWindowWidth(cols) {
-  const gridWidth = cols * 36 + (cols - 1) * 3;
-  return Math.max(200, gridWidth + 24 + 2 + 24);
-}
-function createResultsWindow(cols = 4) {
-  const win = new electron.BrowserWindow({
-    width: colsToWindowWidth(cols),
-    height: 600,
-    x: 20,
-    y: 60,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: true,
-    webPreferences: {
-      preload: path.join(__dirname, "../preload/index.js"),
-      sandbox: false
-    }
-  });
-  if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
-    win.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}/results.html`);
-  } else {
-    win.loadFile(path.join(__dirname, "../renderer/results.html"));
-  }
-  win.on("closed", () => {
-    resultsWindow = null;
-  });
-  return win;
-}
 function registerIpc() {
-  electron.ipcMain.handle("region:start", () => {
+  electron.ipcMain.handle(IPC_CHANNELS.regionStart, () => {
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.focus();
       return;
     }
     selectorWindow = createSelectorWindow();
   });
-  electron.ipcMain.on("region:confirm", (_event, region) => {
+  electron.ipcMain.on(IPC_CHANNELS.regionConfirm, (_event, payload) => {
+    const region = parseBoundingBox(payload);
+    if (!region) {
+      console.warn("[main] Ignoring invalid region payload.");
+      return;
+    }
     savedRegion = region;
     saveSettings({ lastRegion: region, gridRows, gridCols, dictionary: currentDictionary });
     console.log("[main] Region selected:", region);
@@ -571,15 +633,15 @@ function registerIpc() {
       selectorWindow.close();
       selectorWindow = null;
     }
-    mainWindow?.webContents.send("region:selected", region);
+    mainWindow?.webContents.send(IPC_CHANNELS.regionSelected, region);
   });
-  electron.ipcMain.on("region:cancel", () => {
+  electron.ipcMain.on(IPC_CHANNELS.regionCancel, () => {
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.close();
       selectorWindow = null;
     }
   });
-  electron.ipcMain.handle("scan:trigger", async () => {
+  electron.ipcMain.handle(IPC_CHANNELS.scanTrigger, async () => {
     if (!savedRegion) {
       broadcastScanError("No region selected. Please select a region first.");
       return;
@@ -593,62 +655,40 @@ function registerIpc() {
       broadcastScanError(`Scan failed: ${msg}`);
     }
   });
-  electron.ipcMain.handle("settings:getGridSize", () => ({ rows: gridRows, cols: gridCols }));
-  electron.ipcMain.handle("settings:setGridSize", (_event, rows, cols) => {
-    gridRows = rows;
-    gridCols = cols;
+  electron.ipcMain.handle(IPC_CHANNELS.settingsGetGridSize, () => ({ rows: gridRows, cols: gridCols }));
+  electron.ipcMain.handle(IPC_CHANNELS.settingsSetGridSize, (_event, rows, cols) => {
+    const parsed = parseGridSize(rows, cols);
+    if (!parsed) {
+      throw new Error("Invalid grid size payload");
+    }
+    gridRows = parsed.rows;
+    gridCols = parsed.cols;
     saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
   });
-  electron.ipcMain.handle("dictionary:list", () => {
+  electron.ipcMain.handle(IPC_CHANNELS.dictionaryList, () => {
     return { items: listDictionaries(), current: currentDictionary };
   });
-  electron.ipcMain.handle("dictionary:set", (_event, name) => {
+  electron.ipcMain.handle(IPC_CHANNELS.dictionarySet, (_event, name) => {
+    if (typeof name !== "string") throw new Error("Invalid dictionary payload");
+    const items = listDictionaries();
+    if (!items.includes(name)) throw new Error("Unknown dictionary");
     currentDictionary = name;
     saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
   });
-  electron.ipcMain.handle("grid:solve", (_event, grid) => {
+  electron.ipcMain.handle(IPC_CHANNELS.gridSolve, (_event, payload) => {
+    const grid = parseEditableGrid(payload);
+    if (!grid) throw new Error("Invalid grid payload");
     const trie = getDictionary(currentDictionary);
     const t0 = Date.now();
     const words = solve(grid, trie);
     return { words, solveMs: Date.now() - t0 };
   });
-  electron.ipcMain.on("results:close", () => {
-    if (resultsWindow && !resultsWindow.isDestroyed()) {
-      resultsWindow.close();
-      resultsWindow = null;
-    }
-  });
-  electron.ipcMain.on("results:clickthrough", (_event, enabled) => {
-    if (resultsWindow && !resultsWindow.isDestroyed()) {
-      resultsWindow.setIgnoreMouseEvents(enabled, { forward: true });
-    }
-  });
-  electron.ipcMain.handle("results:setWidth", (_event, width) => {
-    if (resultsWindow && !resultsWindow.isDestroyed()) {
-      const [, h] = resultsWindow.getSize();
-      resultsWindow.setSize(Math.round(width), h);
-    }
-  });
 }
 function broadcastScanResult(result) {
-  const cols = result.grid?.[0]?.length ?? gridCols;
-  mainWindow?.webContents.send("scan:result", result);
-  if (!resultsWindow || resultsWindow.isDestroyed()) {
-    resultsWindow = createResultsWindow(cols);
-    resultsWindow.webContents.once("did-finish-load", () => {
-      resultsWindow?.webContents.send("scan:result", result);
-    });
-  } else {
-    const [, h] = resultsWindow.getSize();
-    resultsWindow.setSize(colsToWindowWidth(cols), h);
-    resultsWindow.webContents.send("scan:result", result);
-    resultsWindow.show();
-    resultsWindow.focus();
-  }
+  mainWindow?.webContents.send(IPC_CHANNELS.scanResult, result);
 }
 function broadcastScanError(msg) {
-  mainWindow?.webContents.send("scan:error", msg);
-  resultsWindow?.webContents.send("scan:error", msg);
+  mainWindow?.webContents.send(IPC_CHANNELS.scanError, msg);
 }
 electron.app.whenReady().then(() => {
   utils.electronApp.setAppUserModelId("com.lexi-word-finder");
@@ -661,10 +701,11 @@ electron.app.whenReady().then(() => {
     utils.optimizer.watchWindowShortcuts(window);
   });
   registerIpc();
+  registerWindowControlIpc({ getMainWindow: () => mainWindow });
   mainWindow = createMainWindow();
   if (savedRegion) {
     mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow?.webContents.send("region:selected", savedRegion);
+      mainWindow?.webContents.send(IPC_CHANNELS.regionSelected, savedRegion);
     });
   }
   createTray(

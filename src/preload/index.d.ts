@@ -16,11 +16,10 @@ export interface LexiApi {
   onScanResult: (callback: (result: ScanResult) => void) => () => void
   onScanError: (callback: (error: string) => void) => () => void
 
-  // Results overlay
-  closeResultsOverlay: () => void
-  setClickThrough: (enabled: boolean) => void
-  rescanFromOverlay: () => Promise<void>
-  resizeResultsWindow: (width: number) => Promise<void>
+  // Main window toolbar controls
+  closeMainWindow: () => void
+  setMainAlwaysOnTop: (enabled: boolean) => Promise<boolean>
+  getMainAlwaysOnTop: () => Promise<boolean>
 
   // Dictionary selection
   listDictionaries: () => Promise<{ items: string[]; current: string }>

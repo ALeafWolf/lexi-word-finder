@@ -9,7 +9,7 @@ Lexi Word Finder is a **desktop Electron app** that helps with letter-grid word 
 1. **Region selection** — You draw a rectangle over the game grid on screen. The capture area and grid size (rows × columns) are remembered between sessions.
 2. **Capture and OCR** — The app screenshots that region, then uses **Tesseract.js** to read letters per cell into a 2D grid. **QU** is treated as a single tile where applicable.
 3. **Word search** — A **trie-backed solver** walks the grid in eight directions (no reusing a cell in one word), matches against `resources/wordlist.txt`, and collects valid words (minimum length 3), sorted by length then alphabetically.
-4. **Triggers** — Scan from the main window, the **system tray**, or the global shortcut **Ctrl+Shift+S** (Cmd+Shift+S on macOS). Results appear in a small **always-on-top overlay**; you can toggle click-through so it does not block the game.
+4. **Triggers** — Scan from the main window, the **system tray**, or the global shortcut **Ctrl+Shift+S** (Cmd+Shift+S on macOS). Results appear directly in the main app, where you can edit OCR cells and rescan quickly from the toolbar.
 
 Debug builds can optionally save the last capture to a temp PNG to verify cropping.
 
@@ -61,15 +61,15 @@ lexi-word-finder/
 │   ├── renderer/              # React front-end; multiple HTML entry points
 │   │   ├── index.html         # Main settings / control window
 │   │   ├── selector.html      # Full-screen transparent overlay for region drag-select
-│   │   ├── results.html       # Floating results overlay
 │   │   └── src/
 │   │       ├── App.tsx
 │   │       ├── RegionSelector.tsx
-│   │       ├── ResultsOverlay.tsx
-│   │       ├── main.tsx, selector.tsx, results.tsx  # Entry mounts per page
+│   │       ├── components/ResultsSection.tsx
+│   │       ├── hooks/useScanResults.ts
+│   │       └── main.tsx, selector.tsx  # Entry mounts per page
 │   │       └── types.ts
 │   └── shared/types.ts        # Types shared where useful across layers
 └── out/                       # Build output (produced by `npm run build`; not source)
 ```
 
-The **main** process owns privileged work (screen capture, filesystem, global shortcuts, tray). The **preload** script defines the IPC surface the **renderer** may call. Three renderer bundles correspond to the main window, the region selector overlay, and the results overlay.
+The **main** process owns privileged work (screen capture, filesystem, global shortcuts, tray). The **preload** script defines the IPC surface the **renderer** may call. The renderer bundles correspond to the main window and the region selector overlay.
