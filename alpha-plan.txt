@@ -1,0 +1,79 @@
+Project Name:
+lexi-word-finder
+
+
+Overview:
+A desktop overlay application that captures a user-defined region of the screen, detects letters from a grid-based word game using OCR, and generates the longest possible valid words based on adjacency rules.
+
+
+Requirements:
+
+Functional Requirements:
+- Allow user to select a custom region of the screen via drag-and-resize
+- Capture screenshot of the selected region
+- Detect letters within a grid (e.g., 4x4) using OCR (tesseract.js)
+- Process grid into structured format (rows and columns)
+- Generate valid words using adjacency rules (no tile reuse, 8 directions)
+- Display detected characters in an overlay
+- Display list of longest valid words (sorted by length)
+
+Non-Functional Requirements:
+- Fast response time (OCR + solver within ~1–2 seconds)
+- High OCR accuracy (character normalization and correction)
+- Lightweight and responsive UI
+- Cross-platform desktop support (Windows/Mac)
+- Minimal manual input after region selection
+
+Optional Enhancements:
+- Highlight word paths visually on grid
+- Keyboard shortcut to trigger scan
+- Support different grid sizes
+- Score-based ranking (game-specific rules)
+- Auto-detect grid boundaries
+
+
+Suggested Architecture:
+
+1. Desktop Application Layer:
+- Built with Electron
+- Provides window management, overlay rendering, and system-level access
+- Transparent always-on-top overlay window for results display
+
+2. Region Selection Module:
+- Fullscreen transparent window
+- Mouse drag to define bounding box
+- Stores coordinates for capture
+
+3. Screen Capture Module:
+- Uses Electron desktopCapturer API
+- Captures only selected region
+- Outputs image buffer for processing
+
+4. OCR Processing Module:
+- Uses tesseract.js
+- Splits captured image into grid cells
+- Runs OCR per cell for better accuracy
+- Applies character normalization (e.g., Qu, I vs l)
+
+5. Grid Parser:
+- Converts OCR results into structured 2D array
+- Validates and cleans detected letters
+
+6. Word Solver Engine:
+- Implements DFS/backtracking algorithm
+- Traverses grid with:
+  - no tile reuse
+  - 8-direction adjacency
+- Uses dictionary word list (optimized with Trie if needed)
+- Returns sorted list of valid words
+
+7. Overlay UI (React):
+- Displays:
+  - detected grid
+  - top longest words
+- Supports toggle between interactive and click-through mode
+
+8. Control Flow:
+- User selects region → triggers capture
+- Capture → OCR → grid parsing → word solving
+- Results rendered in overlay UI
