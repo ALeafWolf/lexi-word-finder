@@ -9,6 +9,16 @@ export default function ResultsOverlay(): React.JSX.Element {
   const [hoveredWord, setHoveredWord] = useState<WordResult | null>(null)
   const [clickThrough, setClickThroughState] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Resize the Electron window to fit the panel content after each scan result
+  useEffect(() => {
+    if (!result || !panelRef.current) return
+    // scrollWidth reports the full content width even when the window clips it
+    const panelW = panelRef.current.scrollWidth
+    const overlayPadding = 24 // 12px each side from .overlay
+    void window.api.resizeResultsWindow(panelW + overlayPadding)
+  }, [result])
 
   useEffect(() => {
     const unsub = window.api.onScanResult((r) => {
@@ -59,7 +69,7 @@ export default function ResultsOverlay(): React.JSX.Element {
 
   return (
     <div className={`overlay${clickThrough ? ' click-through' : ''}`}>
-      <div className="panel">
+      <div className="panel" ref={panelRef}>
         {/* Header */}
         <div className="header">
           <span className="header-title">Lexi</span>
@@ -150,7 +160,7 @@ function GridDisplay({
   return (
     <div
       className="grid-display"
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      style={{ gridTemplateColumns: `repeat(${cols}, 36px)` }}
     >
       {editableGrid.map((row, r) =>
         row.map((letter, c) => {

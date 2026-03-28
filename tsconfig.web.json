@@ -1,5 +1,5 @@
 {
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.d.ts"],
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.d.ts", "src/preload/index.d.ts"],
   "compilerOptions": {
     "composite": true,
     "target": "ESNext",

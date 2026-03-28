@@ -11,6 +11,7 @@ export interface LexiApi {
 
   // Scan
   triggerScan: () => Promise<void>
+  getGridSize: () => Promise<{ rows: number; cols: number }>
   setGridSize: (rows: number, cols: number) => Promise<void>
   onScanResult: (callback: (result: ScanResult) => void) => () => void
   onScanError: (callback: (error: string) => void) => () => void
@@ -19,6 +20,7 @@ export interface LexiApi {
   closeResultsOverlay: () => void
   setClickThrough: (enabled: boolean) => void
   rescanFromOverlay: () => Promise<void>
+  resizeResultsWindow: (width: number) => Promise<void>
 
   // Dictionary selection
   listDictionaries: () => Promise<{ items: string[]; current: string }>

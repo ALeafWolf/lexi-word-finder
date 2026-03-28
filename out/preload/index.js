@@ -13,6 +13,7 @@ const api = {
   },
   // --- Scan trigger ---
   triggerScan: () => electron.ipcRenderer.invoke("scan:trigger"),
+  getGridSize: () => electron.ipcRenderer.invoke("settings:getGridSize"),
   setGridSize: (rows, cols) => electron.ipcRenderer.invoke("settings:setGridSize", rows, cols),
   onScanResult: (callback) => {
     const handler = (_event, result) => callback(result);
@@ -28,6 +29,7 @@ const api = {
   closeResultsOverlay: () => electron.ipcRenderer.send("results:close"),
   setClickThrough: (enabled) => electron.ipcRenderer.send("results:clickthrough", enabled),
   rescanFromOverlay: () => electron.ipcRenderer.invoke("scan:trigger"),
+  resizeResultsWindow: (width) => electron.ipcRenderer.invoke("results:setWidth", width),
   // --- Dictionary selection ---
   listDictionaries: () => electron.ipcRenderer.invoke("dictionary:list"),
   setDictionary: (name) => electron.ipcRenderer.invoke("dictionary:set", name),

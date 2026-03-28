@@ -88,9 +88,15 @@ function createSelectorWindow(): BrowserWindow {
   return win
 }
 
-function createResultsWindow(): BrowserWindow {
+function colsToWindowWidth(cols: number): number {
+  // cell=36px, gap=3px, horizontal grid padding=24px, panel border=2px, overlay padding=24px
+  const gridWidth = cols * 36 + (cols - 1) * 3
+  return Math.max(200, gridWidth + 24 + 2 + 24)
+}
+
+function createResultsWindow(cols = 4): BrowserWindow {
   const win = new BrowserWindow({
-    width: 264,
+    width: colsToWindowWidth(cols),
     height: 600,
     x: 20,
     y: 60,
@@ -169,6 +175,8 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('settings:getGridSize', () => ({ rows: gridRows, cols: gridCols }))
+
   ipcMain.handle('settings:setGridSize', (_event, rows: number, cols: number) => {
     gridRows = rows
     gridCols = cols
@@ -205,21 +213,31 @@ function registerIpc(): void {
       resultsWindow.setIgnoreMouseEvents(enabled, { forward: true })
     }
   })
+
+  ipcMain.handle('results:setWidth', (_event, width: number) => {
+    if (resultsWindow && !resultsWindow.isDestroyed()) {
+      const [, h] = resultsWindow.getSize()
+      resultsWindow.setSize(Math.round(width), h)
+    }
+  })
 }
 
 // ─── Broadcast helpers ───────────────────────────────────────────────────────
 
 function broadcastScanResult(result: unknown): void {
+  const cols = ((result as { grid?: string[][] }).grid?.[0]?.length) ?? gridCols
   mainWindow?.webContents.send('scan:result', result)
 
   // Open/update the results overlay
   if (!resultsWindow || resultsWindow.isDestroyed()) {
-    resultsWindow = createResultsWindow()
+    resultsWindow = createResultsWindow(cols)
     // Wait for the window to load then send the result
     resultsWindow.webContents.once('did-finish-load', () => {
       resultsWindow?.webContents.send('scan:result', result)
     })
   } else {
+    const [, h] = resultsWindow.getSize()
+    resultsWindow.setSize(colsToWindowWidth(cols), h)
     resultsWindow.webContents.send('scan:result', result)
     resultsWindow.show()
     resultsWindow.focus()

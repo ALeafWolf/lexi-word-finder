@@ -525,9 +525,13 @@ function createSelectorWindow() {
   }
   return win;
 }
-function createResultsWindow() {
+function colsToWindowWidth(cols) {
+  const gridWidth = cols * 36 + (cols - 1) * 3;
+  return Math.max(200, gridWidth + 24 + 2 + 24);
+}
+function createResultsWindow(cols = 4) {
   const win = new electron.BrowserWindow({
-    width: 264,
+    width: colsToWindowWidth(cols),
     height: 600,
     x: 20,
     y: 60,
@@ -589,6 +593,7 @@ function registerIpc() {
       broadcastScanError(`Scan failed: ${msg}`);
     }
   });
+  electron.ipcMain.handle("settings:getGridSize", () => ({ rows: gridRows, cols: gridCols }));
   electron.ipcMain.handle("settings:setGridSize", (_event, rows, cols) => {
     gridRows = rows;
     gridCols = cols;
@@ -618,15 +623,24 @@ function registerIpc() {
       resultsWindow.setIgnoreMouseEvents(enabled, { forward: true });
     }
   });
+  electron.ipcMain.handle("results:setWidth", (_event, width) => {
+    if (resultsWindow && !resultsWindow.isDestroyed()) {
+      const [, h] = resultsWindow.getSize();
+      resultsWindow.setSize(Math.round(width), h);
+    }
+  });
 }
 function broadcastScanResult(result) {
+  const cols = result.grid?.[0]?.length ?? gridCols;
   mainWindow?.webContents.send("scan:result", result);
   if (!resultsWindow || resultsWindow.isDestroyed()) {
-    resultsWindow = createResultsWindow();
+    resultsWindow = createResultsWindow(cols);
     resultsWindow.webContents.once("did-finish-load", () => {
       resultsWindow?.webContents.send("scan:result", result);
     });
   } else {
+    const [, h] = resultsWindow.getSize();
+    resultsWindow.setSize(colsToWindowWidth(cols), h);
     resultsWindow.webContents.send("scan:result", result);
     resultsWindow.show();
     resultsWindow.focus();

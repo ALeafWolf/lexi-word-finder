@@ -19,6 +19,8 @@ const api = {
 
   // --- Scan trigger ---
   triggerScan: () => ipcRenderer.invoke('scan:trigger'),
+  getGridSize: (): Promise<{ rows: number; cols: number }> =>
+    ipcRenderer.invoke('settings:getGridSize'),
   setGridSize: (rows: number, cols: number) =>
     ipcRenderer.invoke('settings:setGridSize', rows, cols),
 
@@ -38,6 +40,7 @@ const api = {
   closeResultsOverlay: () => ipcRenderer.send('results:close'),
   setClickThrough: (enabled: boolean) => ipcRenderer.send('results:clickthrough', enabled),
   rescanFromOverlay: () => ipcRenderer.invoke('scan:trigger'),
+  resizeResultsWindow: (width: number) => ipcRenderer.invoke('results:setWidth', width),
 
   // --- Dictionary selection ---
   listDictionaries: (): Promise<{ items: string[]; current: string }> =>

@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { BoundingBox, ScanResult } from './types'
+import type { BoundingBox } from './types'
 import './App.css'
+
+const MIN_GRID = 2
+const MAX_GRID = 15
+
+function clampGridDim(n: number): number {
+  return Math.min(MAX_GRID, Math.max(MIN_GRID, Math.floor(n)))
+}
 
 function App(): React.JSX.Element {
   const [region, setRegion] = useState<BoundingBox | null>(null)
-  const [result, setResult] = useState<ScanResult | null>(null)
-  const [editableGrid, setEditableGrid] = useState<string[][]>([])
-  const [editedCells, setEditedCells] = useState<Set<string>>(new Set())
-  const [editingCell, setEditingCell] = useState<string | null>(null)
-  const [draftValue, setDraftValue] = useState('')
   const [status, setStatus] = useState<'idle' | 'selecting' | 'scanning' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [gridSize, setGridSizeState] = useState<4 | 5>(4)
+  const [gridRows, setGridRows] = useState(4)
+  const [gridCols, setGridCols] = useState(4)
   const [dictionaries, setDictionaries] = useState<string[]>([])
   const [selectedDict, setSelectedDict] = useState<string>('wordlist')
 
@@ -20,6 +23,10 @@ function App(): React.JSX.Element {
       setDictionaries(items)
       setSelectedDict(current)
     })
+    window.api.getGridSize().then(({ rows, cols }) => {
+      setGridRows(rows)
+      setGridCols(cols)
+    })
   }, [])
 
   useEffect(() => {
@@ -27,11 +34,7 @@ function App(): React.JSX.Element {
       setRegion(r)
       setStatus('idle')
     })
-    const unsubResult = window.api.onScanResult((r) => {
-      setResult(r)
-      setEditableGrid(r.grid.map((row) => [...row]))
-      setEditedCells(new Set())
-      setEditingCell(null)
+    const unsubResult = window.api.onScanResult(() => {
       setStatus('idle')
       setErrorMsg(null)
     })
@@ -57,10 +60,30 @@ function App(): React.JSX.Element {
     await window.api.triggerScan()
   }, [])
 
-  const handleGridSizeChange = useCallback(
-    async (size: 4 | 5) => {
-      setGridSizeState(size)
-      await window.api.setGridSize(size, size)
+  const handleGridRowsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.valueAsNumber
+      if (Number.isNaN(v)) return
+      const r = clampGridDim(v)
+      setGridRows(r)
+      setGridCols((c) => {
+        void window.api.setGridSize(r, c)
+        return c
+      })
+    },
+    []
+  )
+
+  const handleGridColsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.valueAsNumber
+      if (Number.isNaN(v)) return
+      const c = clampGridDim(v)
+      setGridCols(c)
+      setGridRows((r) => {
+        void window.api.setGridSize(r, c)
+        return r
+      })
     },
     []
   )
@@ -69,26 +92,6 @@ function App(): React.JSX.Element {
     setSelectedDict(name)
     await window.api.setDictionary(name)
   }, [])
-
-  const startCellEdit = useCallback((r: number, c: number, letter: string) => {
-    setEditingCell(`${r},${c}`)
-    setDraftValue(letter === '?' ? '' : letter)
-  }, [])
-
-  const commitCellEdit = useCallback(
-    async (r: number, c: number) => {
-      const trimmed = draftValue.trim()
-      setEditingCell(null)
-      if (trimmed.length === 0) return
-      const newGrid = editableGrid.map((row) => [...row])
-      newGrid[r][c] = trimmed
-      setEditableGrid(newGrid)
-      setEditedCells((prev) => new Set(prev).add(`${r},${c}`))
-      const { words } = await window.api.solveGrid(newGrid)
-      setResult((prev) => (prev ? { ...prev, words } : prev))
-    },
-    [draftValue, editableGrid]
-  )
 
   return (
     <div className="app">
@@ -101,15 +104,29 @@ function App(): React.JSX.Element {
         {/* Grid size selector */}
         <div className="grid-size-row">
           <span className="label">Grid size:</span>
-          {([4, 5] as const).map((n) => (
-            <button
-              key={n}
-              className={`size-btn${gridSize === n ? ' active' : ''}`}
-              onClick={() => handleGridSizeChange(n)}
-            >
-              {n}×{n}
-            </button>
-          ))}
+          <input
+            className="grid-num-input"
+            type="number"
+            min={MIN_GRID}
+            max={MAX_GRID}
+            step={1}
+            value={gridRows}
+            onChange={handleGridRowsChange}
+            aria-label="Grid rows"
+          />
+          <span className="grid-sep" aria-hidden>
+            ×
+          </span>
+          <input
+            className="grid-num-input"
+            type="number"
+            min={MIN_GRID}
+            max={MAX_GRID}
+            step={1}
+            value={gridCols}
+            onChange={handleGridColsChange}
+            aria-label="Grid columns"
+          />
         </div>
 
         {/* Dictionary selector */}
@@ -163,79 +180,6 @@ function App(): React.JSX.Element {
 
         {!region && (
           <div className="hint">No region selected yet — click "Select Region" to begin.</div>
-        )}
-
-        {/* Inline results summary (main window) */}
-        {result && (
-          <div className="results-summary">
-            <div className="results-header">
-              <span>{result.words.length} words found</span>
-              <span className="dim">{result.elapsedMs}ms</span>
-            </div>
-            <div
-              className="grid-preview"
-              style={{ gridTemplateColumns: `repeat(${editableGrid[0]?.length ?? result.grid[0]?.length ?? 4}, 1fr)` }}
-            >
-              {editableGrid.map((row, r) =>
-                row.map((letter, c) => {
-                  const key = `${r},${c}`
-                  const isEditing = editingCell === key
-                  const isEdited = editedCells.has(key)
-                  const hasOcrError = letter === '?'
-                  const classes = [
-                    'preview-cell',
-                    isEdited ? 'edited' : '',
-                    isEditing ? 'editing' : '',
-                    hasOcrError ? 'ocr-error' : ''
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                  return (
-                    <div
-                      key={key}
-                      className={classes}
-                      title={hasOcrError ? 'OCR could not read this cell — click to fix' : 'Click to edit'}
-                      onClick={() => !isEditing && startCellEdit(r, c, letter)}
-                    >
-                      {isEditing ? (
-                        <input
-                          className="preview-cell-input"
-                          value={draftValue}
-                          autoFocus
-                          maxLength={2}
-                          onChange={(e) => setDraftValue(e.target.value.toUpperCase())}
-                          onFocus={(e) => e.target.select()}
-                          onBlur={() => commitCellEdit(r, c)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === 'Tab') {
-                              e.preventDefault()
-                              commitCellEdit(r, c)
-                            } else if (e.key === 'Escape') {
-                              setEditingCell(null)
-                            }
-                          }}
-                        />
-                      ) : hasOcrError ? (
-                        <span className="preview-unknown">?</span>
-                      ) : (
-                        letter
-                      )}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-            <div className="top-words">
-              {result.words.slice(0, 10).map((w, i) => (
-                <span key={i} className="word-chip">
-                  {w.word}
-                </span>
-              ))}
-              {result.words.length > 10 && (
-                <span className="word-chip dim">+{result.words.length - 10} more</span>
-              )}
-            </div>
-          </div>
         )}
       </div>
     </div>
