@@ -22,7 +22,8 @@ export async function scanAndSolve(
   region: BoundingBox,
   gridRows = 4,
   gridCols = 4,
-  debugSave = false
+  debugSave = false,
+  dictionary = 'wordlist'
 ): Promise<ScanResult> {
   const total = Date.now()
 
@@ -43,7 +44,7 @@ export async function scanAndSolve(
 
   // 3. Solve
   const t2 = Date.now()
-  const trie = getDictionary()
+  const trie = getDictionary(dictionary)
   const words = solve(grid, trie)
   const solveMs = Date.now() - t2
 

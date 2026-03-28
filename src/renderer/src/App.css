@@ -166,6 +166,29 @@
   font-weight: 600;
 }
 
+.dict-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.dict-select:hover,
+.dict-select:focus {
+  border-color: var(--accent);
+}
+
+.dict-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 .results-summary {
   width: 100%;
   border: 1px solid var(--border);

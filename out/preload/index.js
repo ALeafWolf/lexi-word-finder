@@ -27,6 +27,9 @@ const api = {
   // --- Results overlay controls ---
   closeResultsOverlay: () => electron.ipcRenderer.send("results:close"),
   setClickThrough: (enabled) => electron.ipcRenderer.send("results:clickthrough", enabled),
-  rescanFromOverlay: () => electron.ipcRenderer.invoke("scan:trigger")
+  rescanFromOverlay: () => electron.ipcRenderer.invoke("scan:trigger"),
+  // --- Dictionary selection ---
+  listDictionaries: () => electron.ipcRenderer.invoke("dictionary:list"),
+  setDictionary: (name) => electron.ipcRenderer.invoke("dictionary:set", name)
 };
 electron.contextBridge.exposeInMainWorld("api", api);

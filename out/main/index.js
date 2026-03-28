@@ -41,7 +41,7 @@ async function initOcrWorker() {
   await workerInstance.setParameters({
     // Uppercase letters only — no digits or punctuation
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    // Single word mode is more robust than SINGLE_CHAR for real-world game tile images
+    // SINGLE_WORD is more robust than SINGLE_CHAR for real-world game tile images
     tessedit_pageseg_mode: tesseract_js.PSM.SINGLE_WORD
   });
   console.log("[ocr] Tesseract worker ready");
@@ -52,42 +52,8 @@ async function terminateOcrWorker() {
     workerInstance = null;
   }
 }
-let _cellCallIndex = 0;
 async function preprocessCell(cellBuffer) {
-  const isFirstCell = _cellCallIndex === 0;
-  _cellCallIndex++;
-  const rawMeta = await sharp(cellBuffer).metadata();
-  fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-entry", message: "Raw cell size before preprocessing", data: { w: rawMeta.width, h: rawMeta.height }, runId: "run2", hypothesisId: "A-E", timestamp: Date.now() }) }).catch(() => {
-  });
-  if (isFirstCell) {
-    const rawPath = path.join(electron.app.getPath("temp"), "lexi-cell00-RAW.png");
-    fs.writeFileSync(rawPath, cellBuffer);
-    console.log(`[ocr-debug] Raw cell[0][0] saved to ${rawPath}`);
-  }
-  const beforeThreshold = await sharp(cellBuffer).resize(200, 200, { fit: "contain", background: { r: 255, g: 255, b: 255 }, kernel: "lanczos3" }).greyscale().normalise().png().toBuffer();
-  if (isFirstCell) {
-    const { data: pixData } = await sharp(beforeThreshold).raw().toBuffer({ resolveWithObject: true });
-    const min = Math.min(...Array.from(pixData));
-    const max = Math.max(...Array.from(pixData));
-    const avg = Array.from(pixData).reduce((s, v) => s + v, 0) / pixData.length;
-    fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-greyscale-stats", message: "Greyscale cell[0][0] pixel stats (before threshold)", data: { min, max, avg: Math.round(avg) }, runId: "run2", hypothesisId: "D", timestamp: Date.now() }) }).catch(() => {
-    });
-    const prePath = path.join(electron.app.getPath("temp"), "lexi-cell00-GREY.png");
-    fs.writeFileSync(prePath, beforeThreshold);
-    console.log(`[ocr-debug] Greyscale cell[0][0] saved to ${prePath}`);
-  }
-  const result = await sharp(beforeThreshold).threshold(128).extend({ top: 20, bottom: 20, left: 20, right: 20, background: { r: 255, g: 255, b: 255 } }).png().toBuffer();
-  if (isFirstCell) {
-    const postPath = path.join(electron.app.getPath("temp"), "lexi-cell00-THRESH.png");
-    fs.writeFileSync(postPath, result);
-    console.log(`[ocr-debug] Thresholded cell[0][0] saved to ${postPath}`);
-    const { data: threshData } = await sharp(result).raw().toBuffer({ resolveWithObject: true });
-    const whitePixels = Array.from(threshData).filter((v) => v === 255).length;
-    const blackPixels = Array.from(threshData).filter((v) => v === 0).length;
-    fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:preprocessCell-threshold-stats", message: "After threshold pixel stats for cell[0][0]", data: { white: whitePixels, black: blackPixels, pctWhite: Math.round(whitePixels / (whitePixels + blackPixels) * 100) }, runId: "run2", hypothesisId: "D", timestamp: Date.now() }) }).catch(() => {
-    });
-  }
-  return result;
+  return sharp(cellBuffer).resize(200, 200, { fit: "contain", background: { r: 255, g: 255, b: 255 }, kernel: "lanczos3" }).greyscale().normalise().threshold(128).extend({ top: 20, bottom: 20, left: 20, right: 20, background: { r: 255, g: 255, b: 255 } }).png().toBuffer();
 }
 async function splitIntoCells(pngBuffer, rows, cols, borderTrimPct = 0.08) {
   const meta = await sharp(pngBuffer).metadata();
@@ -129,7 +95,6 @@ async function recognizeGrid(pngBuffer, rows = 4, cols = 4) {
   if (!workerInstance) {
     throw new Error("OCR worker not initialized. Call initOcrWorker() at startup.");
   }
-  _cellCallIndex = 0;
   const cells = await splitIntoCells(pngBuffer, rows, cols);
   const rawCells = [];
   const grid = [];
@@ -143,10 +108,6 @@ async function recognizeGrid(pngBuffer, rows = 4, cols = 4) {
       } = await workerInstance.recognize(preprocessed);
       const raw = text.trim();
       const normalized = normalizeChar(raw);
-      if (r === 0 && c === 0) {
-        fetch("http://127.0.0.1:7770/ingest/5f518d8e-f99a-43dd-aa2b-4447ea2c2c1a", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "73fc53" }, body: JSON.stringify({ sessionId: "73fc53", location: "ocr.ts:recognizeGrid-cell[0][0]", message: "Raw tesseract output for cell[0][0]", data: { rawText: JSON.stringify(text), rawLen: text.length, cleaned: raw, normalized }, runId: "run2", hypothesisId: "B-C-D", timestamp: Date.now() }) }).catch(() => {
-        });
-      }
       rawRow.push(raw);
       gridRow.push(normalized);
     }
@@ -232,7 +193,7 @@ class Trie {
     return trie;
   }
 }
-let cachedTrie = null;
+const trieCache = /* @__PURE__ */ new Map();
 function getResourcesPath() {
   if (typeof process !== "undefined" && process.resourcesPath) {
     try {
@@ -243,20 +204,30 @@ function getResourcesPath() {
   }
   return path.join(process.cwd(), "resources");
 }
-function getDictionary() {
-  if (cachedTrie) return cachedTrie;
-  const wordlistPath = path.join(getResourcesPath(), "wordlist.txt");
+function listDictionaries() {
+  try {
+    const dir = getResourcesPath();
+    return fs.readdirSync(dir).filter((f) => f.endsWith(".txt")).map((f) => f.slice(0, -4)).sort();
+  } catch {
+    return ["wordlist"];
+  }
+}
+function getDictionary(name = "wordlist") {
+  const cached = trieCache.get(name);
+  if (cached) return cached;
+  const filePath = path.join(getResourcesPath(), `${name}.txt`);
   let content;
   try {
-    content = fs.readFileSync(wordlistPath, "utf-8");
+    content = fs.readFileSync(filePath, "utf-8");
   } catch {
-    console.warn(`[dictionary] Could not load wordlist from ${wordlistPath}, using built-in fallback`);
+    console.warn(`[dictionary] Could not load "${name}.txt", using built-in fallback`);
     content = FALLBACK_WORDS.join("\n");
   }
-  const words = content.split(/\r?\n/).map((w) => w.trim().toUpperCase()).filter((w) => w.length >= 3 && /^[A-Z]+$/.test(w));
-  console.log(`[dictionary] Loaded ${words.length} words into Trie`);
-  cachedTrie = Trie.fromWords(words);
-  return cachedTrie;
+  const words = content.split(/\r?\n/).flatMap((line) => line.trim().split(/\s+/)).map((w) => w.toUpperCase()).filter((w) => w.length >= 3 && /^[A-Z]+$/.test(w));
+  console.log(`[dictionary] Loaded ${words.length} words from "${name}.txt" into Trie`);
+  const trie = Trie.fromWords(words);
+  trieCache.set(name, trie);
+  return trie;
 }
 const FALLBACK_WORDS = [
   "the",
@@ -392,7 +363,7 @@ function solve(grid, trie, minLength = 3) {
     return a.word.localeCompare(b.word);
   });
 }
-async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = false) {
+async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = false, dictionary = "wordlist") {
   const total = Date.now();
   const t0 = Date.now();
   const pngBuffer = await captureRegion(region);
@@ -405,7 +376,7 @@ async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = fa
   const { grid } = await recognizeGrid(pngBuffer, gridRows2, gridCols2);
   const ocrMs = Date.now() - t1;
   const t2 = Date.now();
-  const trie = getDictionary();
+  const trie = getDictionary(dictionary);
   const words = solve(grid, trie);
   const solveMs = Date.now() - t2;
   const elapsedMs = Date.now() - total;
@@ -417,7 +388,8 @@ async function scanAndSolve(region, gridRows2 = 4, gridCols2 = 4, debugSave = fa
 const DEFAULT_SETTINGS = {
   lastRegion: null,
   gridRows: 4,
-  gridCols: 4
+  gridCols: 4,
+  dictionary: "wordlist"
 };
 function getSettingsPath() {
   const dir = electron.app.getPath("userData");
@@ -502,6 +474,7 @@ let resultsWindow = null;
 let savedRegion = null;
 let gridRows = 4;
 let gridCols = 4;
+let currentDictionary = "wordlist";
 function createMainWindow() {
   const win = new electron.BrowserWindow({
     width: 900,
@@ -588,7 +561,7 @@ function registerIpc() {
   });
   electron.ipcMain.on("region:confirm", (_event, region) => {
     savedRegion = region;
-    saveSettings({ lastRegion: region, gridRows, gridCols });
+    saveSettings({ lastRegion: region, gridRows, gridCols, dictionary: currentDictionary });
     console.log("[main] Region selected:", region);
     if (selectorWindow && !selectorWindow.isDestroyed()) {
       selectorWindow.close();
@@ -608,7 +581,7 @@ function registerIpc() {
       return;
     }
     try {
-      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true);
+      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary);
       broadcastScanResult(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -619,7 +592,14 @@ function registerIpc() {
   electron.ipcMain.handle("settings:setGridSize", (_event, rows, cols) => {
     gridRows = rows;
     gridCols = cols;
-    saveSettings({ lastRegion: savedRegion, gridRows, gridCols });
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
+  });
+  electron.ipcMain.handle("dictionary:list", () => {
+    return { items: listDictionaries(), current: currentDictionary };
+  });
+  electron.ipcMain.handle("dictionary:set", (_event, name) => {
+    currentDictionary = name;
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary });
   });
   electron.ipcMain.on("results:close", () => {
     if (resultsWindow && !resultsWindow.isDestroyed()) {
@@ -656,6 +636,7 @@ electron.app.whenReady().then(() => {
   savedRegion = settings.lastRegion;
   gridRows = settings.gridRows;
   gridCols = settings.gridCols;
+  currentDictionary = settings.dictionary;
   electron.app.on("browser-window-created", (_, window) => {
     utils.optimizer.watchWindowShortcuts(window);
   });
@@ -670,7 +651,7 @@ electron.app.whenReady().then(() => {
     // onScan
     () => {
       if (!savedRegion) return;
-      scanAndSolve(savedRegion, gridRows, gridCols, false).then(broadcastScanResult).catch((err) => broadcastScanError(err instanceof Error ? err.message : String(err)));
+      scanAndSolve(savedRegion, gridRows, gridCols, false, currentDictionary).then(broadcastScanResult).catch((err) => broadcastScanError(err instanceof Error ? err.message : String(err)));
     },
     // onSelectRegion
     () => {
@@ -694,7 +675,7 @@ electron.app.whenReady().then(() => {
       broadcastScanError("No region selected. Please select a region first.");
       return;
     }
-    scanAndSolve(savedRegion, gridRows, gridCols, true).then(broadcastScanResult).catch((err) => {
+    scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary).then(broadcastScanResult).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastScanError(`Scan failed: ${msg}`);
     });

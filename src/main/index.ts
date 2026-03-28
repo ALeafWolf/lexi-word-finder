@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initOcrWorker, terminateOcrWorker } from './ocr'
 import { scanAndSolve } from './pipeline'
 import { loadSettings, saveSettings } from './settings'
+import { listDictionaries } from './solver/dictionary'
 import { createTray } from './tray'
 import type { Tray } from 'electron'
 
@@ -21,6 +22,7 @@ let appTray: Tray | null = null
 let savedRegion: BoundingBox | null = null
 let gridRows = 4
 let gridCols = 4
+let currentDictionary = 'wordlist'
 
 // ─── Window factories ────────────────────────────────────────────────────────
 
@@ -130,7 +132,7 @@ function registerIpc(): void {
   // Selector window sends confirmed bounding box
   ipcMain.on('region:confirm', (_event, region: BoundingBox) => {
     savedRegion = region
-    saveSettings({ lastRegion: region, gridRows, gridCols })
+    saveSettings({ lastRegion: region, gridRows, gridCols, dictionary: currentDictionary })
     console.log('[main] Region selected:', region)
 
     if (selectorWindow && !selectorWindow.isDestroyed()) {
@@ -157,7 +159,7 @@ function registerIpc(): void {
       return
     }
     try {
-      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true)
+      const result = await scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary)
       broadcastScanResult(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -169,7 +171,16 @@ function registerIpc(): void {
   ipcMain.handle('settings:setGridSize', (_event, rows: number, cols: number) => {
     gridRows = rows
     gridCols = cols
-    saveSettings({ lastRegion: savedRegion, gridRows, gridCols })
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary })
+  })
+
+  ipcMain.handle('dictionary:list', () => {
+    return { items: listDictionaries(), current: currentDictionary }
+  })
+
+  ipcMain.handle('dictionary:set', (_event, name: string) => {
+    currentDictionary = name
+    saveSettings({ lastRegion: savedRegion, gridRows, gridCols, dictionary: currentDictionary })
   })
 
   // Results overlay controls
@@ -221,6 +232,7 @@ app.whenReady().then(() => {
   savedRegion = settings.lastRegion
   gridRows = settings.gridRows
   gridCols = settings.gridCols
+  currentDictionary = settings.dictionary
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -242,7 +254,7 @@ app.whenReady().then(() => {
     // onScan
     () => {
       if (!savedRegion) return
-      scanAndSolve(savedRegion, gridRows, gridCols, false)
+      scanAndSolve(savedRegion, gridRows, gridCols, false, currentDictionary)
         .then(broadcastScanResult)
         .catch((err) => broadcastScanError(err instanceof Error ? err.message : String(err)))
     },
@@ -272,7 +284,7 @@ app.whenReady().then(() => {
       broadcastScanError('No region selected. Please select a region first.')
       return
     }
-    scanAndSolve(savedRegion, gridRows, gridCols, true)
+    scanAndSolve(savedRegion, gridRows, gridCols, true, currentDictionary)
       .then(broadcastScanResult)
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)

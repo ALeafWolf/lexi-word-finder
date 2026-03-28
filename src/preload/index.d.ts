@@ -19,6 +19,10 @@ export interface LexiApi {
   closeResultsOverlay: () => void
   setClickThrough: (enabled: boolean) => void
   rescanFromOverlay: () => Promise<void>
+
+  // Dictionary selection
+  listDictionaries: () => Promise<{ items: string[]; current: string }>
+  setDictionary: (name: string) => Promise<void>
 }
 
 declare global {

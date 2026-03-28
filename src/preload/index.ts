@@ -37,7 +37,12 @@ const api = {
   // --- Results overlay controls ---
   closeResultsOverlay: () => ipcRenderer.send('results:close'),
   setClickThrough: (enabled: boolean) => ipcRenderer.send('results:clickthrough', enabled),
-  rescanFromOverlay: () => ipcRenderer.invoke('scan:trigger')
+  rescanFromOverlay: () => ipcRenderer.invoke('scan:trigger'),
+
+  // --- Dictionary selection ---
+  listDictionaries: (): Promise<{ items: string[]; current: string }> =>
+    ipcRenderer.invoke('dictionary:list'),
+  setDictionary: (name: string): Promise<void> => ipcRenderer.invoke('dictionary:set', name)
 }
 
 contextBridge.exposeInMainWorld('api', api)

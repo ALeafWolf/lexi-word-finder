@@ -8,6 +8,15 @@ function App(): React.JSX.Element {
   const [status, setStatus] = useState<'idle' | 'selecting' | 'scanning' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [gridSize, setGridSizeState] = useState<4 | 5>(4)
+  const [dictionaries, setDictionaries] = useState<string[]>([])
+  const [selectedDict, setSelectedDict] = useState<string>('wordlist')
+
+  useEffect(() => {
+    window.api.listDictionaries().then(({ items, current }) => {
+      setDictionaries(items)
+      setSelectedDict(current)
+    })
+  }, [])
 
   useEffect(() => {
     const unsub = window.api.onRegionSelected((r) => {
@@ -49,6 +58,11 @@ function App(): React.JSX.Element {
     []
   )
 
+  const handleDictChange = useCallback(async (name: string) => {
+    setSelectedDict(name)
+    await window.api.setDictionary(name)
+  }, [])
+
   return (
     <div className="app">
       <div className="panel">
@@ -70,6 +84,24 @@ function App(): React.JSX.Element {
             </button>
           ))}
         </div>
+
+        {/* Dictionary selector */}
+        {dictionaries.length > 1 && (
+          <div className="grid-size-row">
+            <span className="label">Dictionary:</span>
+            <select
+              className="dict-select"
+              value={selectedDict}
+              onChange={(e) => handleDictChange(e.target.value)}
+            >
+              {dictionaries.map((d) => (
+                <option key={d} value={d}>
+                  {d.charAt(0).toUpperCase() + d.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="actions">
           <button

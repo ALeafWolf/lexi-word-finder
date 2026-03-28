@@ -7,12 +7,14 @@ export interface AppSettings {
   lastRegion: BoundingBox | null
   gridRows: number
   gridCols: number
+  dictionary: string
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   lastRegion: null,
   gridRows: 4,
-  gridCols: 4
+  gridCols: 4,
+  dictionary: 'wordlist'
 }
 
 function getSettingsPath(): string {
